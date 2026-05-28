@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Brain Mode — Never Fill Your Context Window Again</title>
+<style>
+  :root { --indigo: #4f46e5; --bg: #0f0f13; --card: #1a1a24; --border: #2a2a3a; --text: #e4e4e7; --muted: #8a8a9a; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, 'Inter', system-ui, sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; }
+  .container { max-width: 800px; margin: 0 auto; padding: 40px 20px; }
+  h1 { font-size: 2.5rem; font-weight: 700; margin-bottom: 8px; }
+  h1 span { color: var(--indigo); }
+  .subtitle { font-size: 1.15rem; color: var(--muted); margin-bottom: 40px; }
+  .hero { text-align: center; padding: 60px 0 40px; }
+  .hero p { max-width: 600px; margin: 16px auto; color: var(--muted); font-size: 1.1rem; }
+  .badge { display: inline-block; background: var(--indigo); color: #fff; padding: 4px 12px; border-radius: 20px; font-size: 0.8rem; font-weight: 600; margin-bottom: 16px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 24px; margin-bottom: 20px; }
+  .card h2 { font-size: 1.3rem; margin-bottom: 12px; }
+  .card p { color: var(--muted); font-size: 0.95rem; margin-bottom: 8px; }
+  .product { display: flex; justify-content: space-between; align-items: center; }
+  .product-info { flex: 1; }
+  .product-info h3 { font-size: 1.1rem; }
+  .product-info p { font-size: 0.85rem; color: var(--muted); }
+  .price { font-size: 1.3rem; font-weight: 700; color: var(--indigo); }
+  .wallet-box { background: #0a0a10; border: 1px dashed var(--border); border-radius: 8px; padding: 16px; font-family: monospace; font-size: 0.85rem; word-break: break-all; margin: 8px 0; }
+  .wallet-label { font-size: 0.8rem; color: var(--muted); margin-bottom: 4px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .feature { text-align: center; padding: 20px; }
+  .feature .icon { font-size: 2rem; margin-bottom: 8px; }
+  .feature h3 { font-size: 1rem; margin-bottom: 4px; }
+  .feature p { font-size: 0.85rem; color: var(--muted); }
+  .cta { text-align: center; padding: 40px 0; }
+  .cta p { color: var(--muted); margin-bottom: 16px; }
+  .btn { display: inline-block; background: var(--indigo); color: #fff; padding: 12px 32px; border-radius: 8px; text-decoration: none; font-weight: 600; }
+  .btn:hover { opacity: 0.9; }
+  .footer { text-align: center; padding: 40px 0; color: var(--muted); font-size: 0.85rem; }
+  .footer a { color: var(--indigo); text-decoration: none; }
+  .faq-item { margin-bottom: 16px; }
+  .faq-item h4 { margin-bottom: 4px; font-size: 0.95rem; }
+  .faq-item p { color: var(--muted); font-size: 0.9rem; }
+  .divider { border: none; border-top: 1px solid var(--border); margin: 40px 0; }
+  .product + .product { border-top: 1px solid var(--border); padding-top: 16px; margin-top: 16px; }
+  @media (max-width: 600px) { .grid { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="container">
+
+<div class="hero">
+  <div class="badge">🧠 v0.3.0 — Open Source</div>
+  <h1><span>Brain Mode</span></h1>
+  <p class="subtitle">Your agent never fills its context window. Delegate heavy work to Claude Code subagents with permanent memory. Your conversation stays at 5-15 messages forever.</p>
+</div>
+
+<div class="grid">
+  <div class="card feature">
+    <div class="icon">🧹</div>
+    <h3>Never Compacts</h3>
+    <p>Subagents hide all tool calls. Your context grows by 1 message per task, not 200.</p>
+  </div>
+  <div class="card feature">
+    <div class="icon">🧠</div>
+    <h3>Permanent Memory</h3>
+    <p>Every decision is saved to mem-evolved. Survives restarts, sessions, everything.</p>
+  </div>
+  <div class="card feature">
+    <div class="icon">⚡</div>
+    <h3>One Command Setup</h3>
+    <p><code>npx mem-context-setup</code> installs everything in 30 seconds.</p>
+  </div>
+  <div class="card feature">
+    <div class="icon">🔌</div>
+    <h3>Works Everywhere</h3>
+    <p>Claude Code, Cursor, Windsurf, Continue.dev — any MCP-compatible agent.</p>
+  </div>
+</div>
+
+<hr class="divider">
+
+<h2 style="margin-bottom: 16px;">📦 Products</h2>
+
+<div class="card">
+  <div class="product">
+    <div class="product-info">
+      <h3>Brain Mode Template</h3>
+      <p>Drop-in .claude.md file + quick reference card</p>
+    </div>
+    <div class="price">$9</div>
+  </div>
+  <div class="product">
+    <div class="product-info">
+      <h3>MCP Config Pack</h3>
+      <p>5 pre-built configs for every client + server catalog</p>
+    </div>
+    <div class="price">$7</div>
+  </div>
+  <div class="product">
+    <div class="product-info">
+      <h3>Complete Brain Mode</h3>
+      <p>Template + Configs + 4 agent prompts + troubleshooting guide</p>
+    </div>
+    <div class="price">$24</div>
+  </div>
+</div>
+
+<hr class="divider">
+
+<h2 style="margin-bottom: 16px;">💳 Pay with Crypto</h2>
+
+<div class="card">
+  <p>Send ETH, USDT, or USDC (any ERC-20 token) to the address below. Include your email in the transaction memo and I'll send you the files.</p>
+  
+  <div style="margin-top: 16px;">
+    <div class="wallet-label">Network: Ethereum (ERC-20)</div>
+    <div class="wallet-box">0xb2154Fc54Bf99Fc3224cBBc7886e54C84C3d0cF3</div>
+  </div>
+
+  <div style="margin-top: 16px; text-align: center;">
+    <p style="font-size: 0.85rem; color: var(--muted);">Scan with any crypto wallet</p>
+    <div id="qrcode" style="display: inline-block; background: #fff; padding: 12px; border-radius: 8px; margin-top: 8px;">
+      <!-- QR will be generated or shown as text fallback -->
+      <div style="background: #fff; padding: 8px; border-radius: 4px; font-family: monospace; font-size: 0.7rem; color: #000; max-width: 200px; word-break: break-all;">
+        eth:0xb2154Fc54Bf99Fc3224cBBc7886e54C84C3d0cF3
+      </div>
+    </div>
+  </div>
+
+  <div style="margin-top: 16px; display: flex; gap: 8px; flex-wrap: wrap;">
+    <span style="background: #627eea20; color: #627eea; padding: 4px 10px; border-radius: 4px; font-size: 0.8rem;">ETH</span>
+    <span style="background: #26a17a20; color: #26a17a; padding: 4px 10px; border-radius: 4px; font-size: 0.8rem;">USDT</span>
+    <span style="background: #2775ca20; color: #2775ca; padding: 4px 10px; border-radius: 4px; font-size: 0.8rem;">USDC</span>
+    <span style="background: #8247e520; color: #8247e5; padding: 4px 10px; border-radius: 4px; font-size: 0.8rem;">Any ERC-20</span>
+  </div>
+</div>
+
+<hr class="divider">
+
+<h2 style="margin-bottom: 16px;">❓ FAQ</h2>
+
+<div class="card">
+  <div class="faq-item">
+    <h4>What is Brain Mode?</h4>
+    <p>A pattern where your AI agent delegates heavy work to subagents. The subagent's 50+ tool calls stay hidden from your context. You see 1 message per task instead of 200.</p>
+  </div>
+  <div class="faq-item">
+    <h4>Do I need to install anything?</h4>
+    <p>Yes — <code>npx mem-context-setup</code> installs both MCP servers, writes config, and creates the brain prompt. Takes 30 seconds.</p>
+  </div>
+  <div class="faq-item">
+    <h4>Is this open source?</h4>
+    <p>Yes. Both mem-context and mem-evolved are MIT licensed on GitHub. The paid products are convenience bundles — pre-built configs, prompts, and guides.</p>
+  </div>
+  <div class="faq-item">
+    <h4>How do I get the files after paying?</h4>
+    <p>Include your email in the crypto transaction memo. I'll send the files within 24 hours. Or DM me on GitHub (@Meliwat).</p>
+  </div>
+  <div class="faq-item">
+    <h4>Does this work with Cursor?</h4>
+    <p>Yes. The MCP Config Pack includes pre-built configs for Claude Code, Cursor, Windsurf, Continue.dev, and Claude Desktop.</p>
+  </div>
+</div>
+
+<hr class="divider">
+
+<div class="cta">
+  <h2>Try it free</h2>
+  <p>The MCP server is free and open source. Start with <code>npx mem-context-setup</code>.</p>
+  <a href="https://github.com/Meliwat/mem-context" class="btn">GitHub →</a>
+  <a href="https://www.npmjs.com/package/mem-context" class="btn" style="background: #cb3837;">npm →</a>
+</div>
+
+<div class="footer">
+  <p>Built by <a href="https://github.com/Meliwat">@Meliwat</a> &middot; <a href="https://github.com/Meliwat/mem-context">mem-context</a> &middot; <a href="https://github.com/Meliwat/mem-evolved">mem-evolved</a> &middot; MIT License</p>
+</div>
+
+</div>
+</body>
+</html>
