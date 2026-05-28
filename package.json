@@ -1,0 +1,37 @@
+{
+  "name": "mem-evolved-context",
+  "version": "0.1.0",
+  "description": "Context Manager for mem-evolved — your agent never fills up its context window. Saves decisions, trims noise, keeps conversation running forever.",
+  "type": "module",
+  "main": "src/index.js",
+  "bin": {
+    "mem-evolved-context": "src/index.js"
+  },
+  "files": [
+    "src/"
+  ],
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "keywords": [
+    "mcp",
+    "context",
+    "memory",
+    "ai-agents",
+    "claude-code",
+    "cursor",
+    "mem-evolved",
+    "context-window"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "github:meliwat/mem-evolved-context"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.10.2"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
