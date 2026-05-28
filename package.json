@@ -1,27 +1,31 @@
 {
   "name": "mem-context",
-  "version": "0.2.0",
-  "description": "Context Manager for mem-evolved — your agent never fills up its context window. Saves decisions, trims noise, keeps conversation running forever.",
+  "version": "0.3.0",
+  "description": "Brain Mode — never fill your context window again. Delegate heavy work to Claude Code subagents with permanent memory (mem-evolved). Your conversation stays at 5-15 messages forever.",
   "type": "module",
   "main": "src/index.js",
   "bin": {
-    "mem-context": "src/index.js"
+    "mem-context": "src/index.js",
+    "mem-context-setup": "src/setup.js"
   },
   "files": [
-    "src/"
+    "src/",
+    "TEMPLATE.claude.md"
   ],
   "scripts": {
-    "start": "node src/index.js"
+    "start": "node src/index.js",
+    "setup": "node src/setup.js"
   },
   "keywords": [
     "mcp",
-    "context",
-    "memory",
+    "context-window",
+    "brain-mode",
     "ai-agents",
     "claude-code",
-    "cursor",
+    "subagent",
+    "never-compact",
     "mem-evolved",
-    "context-window"
+    "infinite-context"
   ],
   "repository": {
     "type": "git",
