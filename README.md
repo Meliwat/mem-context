@@ -1,5 +1,11 @@
 # 🧠 mem-context — Brain Mode
 
+[![npm version](https://img.shields.io/npm/v/mem-context?color=indigo&label=npm&style=flat-square)](https://www.npmjs.com/package/mem-context)
+[![License: MIT](https://img.shields.io/badge/license-MIT-indigo?style=flat-square)](LICENSE)
+[![Node](https://img.shields.io/badge/node-18%2B-indigo?style=flat-square)](package.json)
+[![GitHub stars](https://img.shields.io/github/stars/Meliwat/mem-context?style=flat-square&color=indigo)](https://github.com/Meliwat/mem-context)
+[![Claude Code](https://img.shields.io/badge/works%20with-Claude%20Code-indigo?style=flat-square)](https://docs.anthropic.com/en/docs/claude-code)
+
 > **Never fill your context window again.**
 >
 > Your agent delegates heavy work to Claude Code subagents with permanent memory.
