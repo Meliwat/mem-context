@@ -6,16 +6,16 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
-import { spawn } from 'child_process';
+import { spawn, execSync } from 'child_process';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { execSync } from 'child_process';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MEM_DIR = process.env.MEM_EVOLVED_DIR || path.join(process.env.HOME || '/tmp', '.mem-evolved');
 const OFFLOADS_FILE = path.join(MEM_DIR, 'brain-decisions.json');
 const STATS_FILE = path.join(MEM_DIR, 'brain-stats.json');
+const SUBAGENT_DIR = path.join(MEM_DIR, 'subagent-workspaces');
 
 // ── State ──
 let stats = {
@@ -26,6 +26,7 @@ let stats = {
   sessionHiddenTurns: 0,
   sessionOffloadedDecisions: 0,
   agentsUsed: {},
+  maxDepthReached: 0,
 };
 
 // ── Persistence ──
@@ -53,24 +54,52 @@ async function saveDecisions(decisions) {
   await fs.writeFile(OFFLOADS_FILE, JSON.stringify(decisions, null, 2));
 }
 
-// ── Subagent Spawning ──
+// ── Subagent Spawning (Hermes v2) ──
 
-function detectAgents() {
-  const available = [];
-  try {
-    const result = execSync('which claude 2>/dev/null');
-    if (result.toString().trim()) available.push('claude');
-  } catch {}
-  return available;
-}
+const SUBAGENT_SYSTEM_PROMPT = `You are a LEAF subagent spawned by the Brain.
 
-function spawnSubagent(goal, context, agentType = 'claude', timeout = 120) {
+Your job is to complete the goal you're given. You have access to:
+1. All Claude Code tools (Bash, Edit, Glob, LS, Read, Write, etc.)
+2. mem-evolved MCP for permanent memory (memory_add, memory_search, memory_list, skill_save)
+
+RULES:
+- You are a LEAF — you CANNOT delegate or spawn subagents. Do ALL work yourself.
+- Save important decisions to memory using memory_add as you make them.
+- Use memory_search to recall past context if needed.
+- Use skill_save for reusable workflows you discover.
+
+After completing your work, output a structured result in this exact format:
+
+<result>
+  <summary>What you accomplished — concise, action-oriented</summary>
+  <files>comma-separated list of files created or modified</files>
+  <decisions>
+    <decision>Decision 1 — saved to memory</decision>
+    <decision>Decision 2 — saved to memory</decision>
+  </decisions>
+</result>
+
+Do NOT output anything after the </result> tag.`;
+
+function spawnSubagentV2(goal, context, workDir, timeout = 300) {
   return new Promise((resolve, reject) => {
-    const fullPrompt = context
-      ? `Context: ${context}\n\nGoal: ${goal}`
-      : `Goal: ${goal}`;
+    const mcpConfig = JSON.stringify({
+      mcpServers: {
+        "mem-evolved": {
+          command: "npx",
+          args: ["mem-evolved"],
+        },
+      },
+    });
 
-    const proc = spawn(agentType, ['-p', '-'], {
+    const args = [
+      '-p', '-',
+      '--mcp-config', mcpConfig,
+      '--append-system-prompt', SUBAGENT_SYSTEM_PROMPT,
+    ];
+
+    const proc = spawn('claude', args, {
+      cwd: workDir,
       stdio: ['pipe', 'pipe', 'pipe'],
       timeout: timeout * 1000,
       env: {
@@ -83,86 +112,96 @@ function spawnSubagent(goal, context, agentType = 'claude', timeout = 120) {
     let output = '';
     let errorOutput = '';
     let turnCount = 0;
+    let errBuffer = '';
 
     proc.stdout.on('data', (data) => {
       const text = data.toString();
       output += text;
-      // Rough heuristic: count lines that look like tool calls or assistant turns
-      turnCount += (text.match(/[>│]/g) || []).length;
+      turnCount += (text.match(/[✓>│]/g) || []).length;
     });
 
     proc.stderr.on('data', (data) => {
-      errorOutput += data.toString();
+      const text = data.toString();
+      errorOutput += text;
+      // Progress messages from Claude go to stderr — capture for diagnostics
+      if (text.includes('error') || text.includes('Error') || text.includes('fail')) {
+        errBuffer += text;
+      }
     });
 
     proc.on('error', (err) => reject(err));
 
     proc.on('close', (code) => {
       if (code !== 0 && !output) {
-        reject(new Error(`Subagent exited with code ${code}: ${errorOutput || 'no output'}`));
+        reject(new Error(`Subagent exited with code ${code}: ${errorOutput.slice(0, 500) || 'no output'}`));
         return;
       }
 
-      // Extract decisions from subagent output
-      const decisions = extractDecisions(output);
-
-      // Clean up the output — remove CLI framing, tool call noise
-      const summary = cleanSubagentOutput(output);
+      // Parse structured result
+      const parsed = parseResult(output);
 
       resolve({
-        success: code === 0,
-        summary,
+        success: code === 0 || parsed.summary.length > 0,
+        summary: parsed.summary || cleanOutput(output),
+        hiddenTurns: Math.max(turnCount, 3),
+        decisions: parsed.decisions || [],
+        files: parsed.files || [],
         exitCode: code,
-        hiddenTurns: Math.max(turnCount, 3), // at least 3 turns
-        decisions,
-        duration: timeout,
       });
     });
+
+    const fullPrompt = context
+      ? `Goal: ${goal}\n\nContext: ${context}\n\nRemember to output your <result> XML when done.`
+      : `Goal: ${goal}\n\nRemember to output your <result> XML when done.`;
 
     proc.stdin.write(fullPrompt);
     proc.stdin.end();
   });
 }
 
-function extractDecisions(output) {
-  const decisions = [];
-  const patterns = [
-    /(?:decided?|cho[o]se|opted? for|settled? on|went with|using|prefer|convention):?\s*(.+)$/gim,
-    /(?:we'll|we will|let's|i'll|i will)\s+(?:use|implement|go with|build|add|create)\s+(.+)$/gim,
-    /(?:the\s+(?:approach|pattern|standard|convention|architecture))\s+(?:is|will be|uses?)\s+(.+)$/gim,
-  ];
+function parseResult(output) {
+  const result = { summary: '', decisions: [], files: [] };
 
-  const lines = output.split('\n');
-  for (const line of lines) {
-    for (const pattern of patterns) {
-      const match = line.match(pattern);
-      if (match && match[1].trim().length > 5) {
-        decisions.push(match[1].trim());
-      }
+  // Parse <result> XML
+  const summaryMatch = output.match(/<summary>([\s\S]*?)<\/summary>/i);
+  if (summaryMatch) result.summary = summaryMatch[1].trim();
+
+  const filesMatch = output.match(/<files>([\s\S]*?)<\/files>/i);
+  if (filesMatch) {
+    result.files = filesMatch[1].split(',').map(f => f.trim()).filter(Boolean);
+  }
+
+  // Parse individual <decision> tags
+  const decisionMatches = output.matchAll(/<decision>([\s\S]*?)<\/decision>/gi);
+  for (const match of decisionMatches) {
+    const d = match[1].trim();
+    if (d.length > 3) result.decisions.push(d);
+  }
+
+  // Fallback: if no <decision> tags but has full <decisions> block
+  if (result.decisions.length === 0) {
+    const blockMatch = output.match(/<decisions>([\s\S]*?)<\/decisions>/i);
+    if (blockMatch) {
+      const lines = blockMatch[1].split('\n').map(l => l.trim()).filter(l => l.length > 5 && !l.startsWith('<'));
+      result.decisions = lines;
     }
   }
 
-  return [...new Set(decisions)].slice(0, 10); // dedup, max 10
+  return result;
 }
 
-function cleanSubagentOutput(output) {
-  // Remove CLI framing lines
+function cleanOutput(output) {
   let cleaned = output
+    .replace(/<result>[\s\S]*<\/result>/gi, '')  // remove XML block from raw output
     .replace(/^[>│]\s*/gm, '')
     .replace(/^─{3,}.*$/gm, '')
-    .replace(/\[.*?\]/g, '')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
 
-  // If output is very long, truncate to last meaningful part
   if (cleaned.length > 3000) {
-    // Try to find the final summary
     const summaryMarkers = cleaned.match(/(?:Summary|Result|Done|Completed|Output):?[\s\S]{1,2000}$/i);
-    if (summaryMarkers) {
-      cleaned = summaryMarkers[0];
-    } else {
-      cleaned = cleaned.slice(-2000);
-    }
+    if (summaryMarkers) cleaned = summaryMarkers[0];
+    else cleaned = cleaned.slice(-2000);
   }
 
   return cleaned;
@@ -173,7 +212,7 @@ function cleanSubagentOutput(output) {
 const server = new Server(
   {
     name: 'mem-context',
-    version: '0.1.0',
+    version: '0.2.0',
   },
   {
     capabilities: {
@@ -187,7 +226,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: [
     {
       name: 'context_delegate',
-      description: `Delegate a task to a subagent (Claude Code). The subagent does all the work — 50+ tool calls, terminal commands, file edits — but NONE of that accumulates in your context. You only receive a compact summary back. This is THE tool that prevents context compaction.`,
+      description: `[HERMES-STYLE] Delegate a task to a leaf subagent with full memory. The subagent gets its OWN mem-evolved MCP server for permanent memory — it saves decisions, searches past context, and builds skills autonomously. All its tool calls stay hidden from your context.`,
       inputSchema: {
         type: 'object',
         properties: {
@@ -197,24 +236,16 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           },
           context: {
             type: 'string',
-            description: 'Background info: file paths, project structure, decisions already made, constraints.',
+            description: 'Background: file paths, project structure, decisions already made, constraints. The subagent sees ONLY this — it has no access to your conversation history.',
           },
-          agent: {
+          workdir: {
             type: 'string',
-            description: 'Subagent to use (default: claude)',
-            default: 'claude',
-            enum: ['claude'],
-          },
-          return_type: {
-            type: 'string',
-            description: 'How to return the result. "summary" (default): human-readable. "raw": full output.',
-            default: 'summary',
-            enum: ['summary', 'raw'],
+            description: 'Working directory for the subagent (defaults to cwd). The subagent can read/write files here.',
           },
           timeout: {
             type: 'number',
-            description: 'Max seconds to wait (default: 120)',
-            default: 120,
+            description: 'Max seconds to wait (default: 300). Some tasks need more time.',
+            default: 300,
           },
         },
         required: ['goal'],
@@ -222,18 +253,18 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: 'context_offload',
-      description: `Save decisions and facts from completed subagent tasks to permanent memory. These survive context compaction, session restarts, and agent switches. Reads automatically on next start.`,
+      description: `Save decisions and facts from completed subagent tasks to permanent memory. These survive context compaction, session restarts, and agent switches.`,
       inputSchema: {
         type: 'object',
         properties: {
           decisions: {
             type: 'array',
             items: { type: 'string' },
-            description: 'Decisions, preferences, or conventions to save. Keep concise and declarative.',
+            description: 'Decisions, preferences, or conventions to save.',
           },
           target: {
             type: 'string',
-            description: 'mem-evolved target: "user" (personal preferences) or "memory" (project facts).',
+            description: 'mem-evolved target.',
             default: 'memory',
             enum: ['user', 'memory'],
           },
@@ -243,49 +274,43 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: 'context_status',
-      description: `Check your context utilization and see how much work was hidden via subagents. If your direct-turn count is <15 and hidden turns >0, you're in the safe zone. No compaction risk.`,
+      description: `Check your context utilization and see how much work was hidden via subagents. If your direct-turn count is <15, you're safe.`,
       inputSchema: {
         type: 'object',
         properties: {
           direct_turns: {
             type: 'number',
-            description: 'Number of turns in your current conversation (optional — pass for accurate utilization estimate)',
+            description: 'Number of turns in your current conversation.',
           },
         },
       },
     },
     {
       name: 'context_auto',
-      description: `Full auto-pilot: offload decisions from recent subagent results, then report status. Run this periodically to keep decisions saved and context stable.`,
+      description: `Full auto-pilot: offload decisions from recent subagent results, then report status.`,
       inputSchema: {
         type: 'object',
         properties: {
           recent_decisions: {
             type: 'array',
             items: { type: 'string' },
-            description: 'Decisions from recent subagent work to offload (optional).',
+            description: 'Decisions from recent subagent work.',
           },
           direct_turns: {
             type: 'number',
-            description: 'Your current conversation turn count (optional).',
+            description: 'Your current conversation turn count.',
           },
         },
       },
     },
     {
       name: 'context_snapshot',
-      description: `Save a checkpoint of your current brain state to mem-evolved session search. If you need to roll back or recover context later, you can find it with session_search().`,
+      description: `Save a checkpoint of your current brain state. Recover later via mem-evolved session search.`,
       inputSchema: {
         type: 'object',
         properties: {
-          tag: {
-            type: 'string',
-            description: 'Label for this snapshot (e.g., "before-db-migration", "pre-refactor")',
-          },
-          notes: {
-            type: 'string',
-            description: 'What was happening at this point (optional)',
-          },
+          tag: { type: 'string', description: 'Label (e.g., "before-db-migration")' },
+          notes: { type: 'string', description: 'What was happening at this point.' },
         },
         required: ['tag'],
       },
@@ -299,33 +324,43 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
   switch (name) {
     case 'context_delegate': {
-      const { goal, context, agent = 'claude', return_type = 'summary', timeout = 120 } = args;
+      const { goal, context = '', workdir, timeout = 300 } = args;
+
+      // Create temp workspace for subagent
+      const workspaceId = `subagent-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+      const workspacePath = path.join(SUBAGENT_DIR, workspaceId);
+      await fs.mkdir(workspacePath, { recursive: true });
+
+      // Copy basic project context if workdir is given
+      const actualWorkdir = workdir || process.cwd();
 
       try {
-        const result = await spawnSubagent(goal, context, agent, timeout);
+        const result = await spawnSubagentV2(goal, context, actualWorkdir, timeout);
 
+        // Update stats
         stats.totalDelegations++;
         stats.sessionDelegations++;
         stats.totalHiddenTurns += result.hiddenTurns;
         stats.sessionHiddenTurns += result.hiddenTurns;
-        stats.agentsUsed[agent] = (stats.agentsUsed[agent] || 0) + 1;
+        stats.agentsUsed['claude'] = (stats.agentsUsed['claude'] || 0) + 1;
         await saveStats();
 
-        // If there are decisions, auto-offload them
+        // Auto-offload structured decisions
         if (result.decisions.length > 0) {
           const existing = await loadDecisions();
           existing.push(...result.decisions.map(d => ({
             content: d,
             target: 'memory',
             timestamp: new Date().toISOString(),
-            source_agent: agent,
+            source: 'subagent-autonomous',
           })));
           await saveDecisions(existing);
           stats.totalOffloadedDecisions += result.decisions.length;
           stats.sessionOffloadedDecisions += result.decisions.length;
         }
 
-        const output = return_type === 'raw' ? result.summary : result.summary;
+        // Clean up temp workspace
+        await fs.rm(workspacePath, { recursive: true, force: true }).catch(() => {});
 
         return {
           content: [{
@@ -334,12 +369,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
               success: result.success,
               summary: result.summary,
               hidden_turns: result.hiddenTurns,
-              decisions_extracted: result.decisions,
-              ...(result.success ? {} : { exit_code: result.exitCode }),
+              decisions_saved: result.decisions,
+              files_changed: result.files,
+              note: 'Subagent had autonomous mem-evolved. All decisions were saved to permanent memory.',
             }, null, 2),
           }],
         };
       } catch (err) {
+        await fs.rm(workspacePath, { recursive: true, force: true }).catch(() => {});
         return {
           isError: true,
           content: [{ type: 'text', text: `Delegation failed: ${err.message}` }],
@@ -349,7 +386,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
     case 'context_offload': {
       const { decisions, target = 'memory' } = args;
-
       const existing = await loadDecisions();
       existing.push(...decisions.map(d => ({
         content: d,
@@ -357,7 +393,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         timestamp: new Date().toISOString(),
       })));
       await saveDecisions(existing);
-
       stats.totalOffloadedDecisions += decisions.length;
       stats.sessionOffloadedDecisions += decisions.length;
       await saveStats();
@@ -377,11 +412,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
     case 'context_status': {
       const { direct_turns } = args || {};
-
       const estimatedUtilization = direct_turns
-        ? Math.min(Math.round((direct_turns / 100) * 100), 100)  // rough: each turn ~1% with delegation
+        ? Math.min(Math.round((direct_turns / 100) * 100), 100)
         : 'unknown (pass direct_turns for estimate)';
-
       const decisions = await loadDecisions();
 
       return {
@@ -404,8 +437,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             stored_decisions: decisions.length,
             safe: direct_turns ? direct_turns < 15 : 'unknown',
             recommendation: direct_turns && direct_turns > 15
-              ? 'You have >15 direct turns. Consider running context_auto or context_delegate for the next task instead of doing it yourself.'
-              : 'Continue delegating. Your context is healthy.',
+              ? 'You have >15 direct turns. Delegate the next task.'
+              : 'Continue delegating. Context is healthy.',
           }, null, 2),
         }],
       };
@@ -413,8 +446,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
     case 'context_auto': {
       const { recent_decisions = [], direct_turns } = args;
-
-      // Offload any provided decisions
       if (recent_decisions.length > 0) {
         const existing = await loadDecisions();
         existing.push(...recent_decisions.map(d => ({
@@ -426,7 +457,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         stats.totalOffloadedDecisions += recent_decisions.length;
         stats.sessionOffloadedDecisions += recent_decisions.length;
       }
-
       const decisions = await loadDecisions();
       const estimatedUtilization = direct_turns
         ? Math.min(Math.round((direct_turns / 100) * 100), 100)
@@ -455,22 +485,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
     case 'context_snapshot': {
       const { tag, notes = '' } = args;
-
       const snapshot = {
-        tag,
-        notes,
+        tag, notes,
         timestamp: new Date().toISOString(),
         stats_at_snapshot: { ...stats },
         decisions: await loadDecisions(),
       };
-
       const snapshotDir = path.join(MEM_DIR, 'snapshots');
       const filename = `${tag.replace(/[^a-z0-9-]/gi, '_')}-${Date.now()}.json`;
       await fs.mkdir(snapshotDir, { recursive: true });
-      await fs.writeFile(
-        path.join(snapshotDir, filename),
-        JSON.stringify(snapshot, null, 2)
-      );
+      await fs.writeFile(path.join(snapshotDir, filename), JSON.stringify(snapshot, null, 2));
 
       return {
         content: [{

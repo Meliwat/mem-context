@@ -1,6 +1,6 @@
 {
   "name": "mem-context",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Context Manager for mem-evolved — your agent never fills up its context window. Saves decisions, trims noise, keeps conversation running forever.",
   "type": "module",
   "main": "src/index.js",
