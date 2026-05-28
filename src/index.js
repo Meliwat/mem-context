@@ -172,7 +172,7 @@ function cleanSubagentOutput(output) {
 
 const server = new Server(
   {
-    name: 'mem-evolved-context',
+    name: 'mem-context',
     version: '0.1.0',
   },
   {

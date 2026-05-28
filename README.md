@@ -3,7 +3,7 @@
 > **Your agent never fills up its context window. Every heavy task goes to a subagent. You only see the result.**
 
 ```bash
-npx mem-evolved-context
+npx mem-context
 ```
 
 ---
@@ -94,9 +94,9 @@ Data stored at `~/.mem-evolved/` — shared with mem-evolved.
 ```json
 {
   "mcpServers": {
-    "mem-evolved-context": {
+    "mem-context": {
       "command": "npx",
-      "args": ["mem-evolved-context"]
+      "args": ["mem-context"]
     },
     "mem-evolved": {
       "command": "npx",
@@ -111,9 +111,9 @@ Data stored at `~/.mem-evolved/` — shared with mem-evolved.
 ```json
 {
   "mcpServers": {
-    "mem-evolved-context": {
+    "mem-context": {
       "command": "npx",
-      "args": ["mem-evolved-context"]
+      "args": ["mem-context"]
     }
   }
 }
@@ -256,7 +256,7 @@ Run both MCP servers together for the full stack:
 
 ```bash
 npx mem-evolved             # Memory + session search + skills
-npx mem-evolved-context     # Context manager with subagent delegation
+npx mem-context     # Context manager with subagent delegation
 ```
 
 ```
@@ -265,7 +265,7 @@ mem-evolved provides:
   📚 Session search — never lose past work
   🛠️ Skills — reusable procedures
 
-Context Manager provides:
+mem-context provides:
   🧹 Subagent delegation — context never fills
   💾 Decision offload — save value before compact
   📊 Context pulse — know your utilization

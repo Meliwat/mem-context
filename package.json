@@ -1,11 +1,11 @@
 {
-  "name": "mem-evolved-context",
+  "name": "mem-context",
   "version": "0.1.0",
   "description": "Context Manager for mem-evolved — your agent never fills up its context window. Saves decisions, trims noise, keeps conversation running forever.",
   "type": "module",
   "main": "src/index.js",
   "bin": {
-    "mem-evolved-context": "src/index.js"
+    "mem-context": "src/index.js"
   },
   "files": [
     "src/"
@@ -25,7 +25,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "github:meliwat/mem-evolved-context"
+    "url": "github:meliwat/mem-context"
   },
   "license": "MIT",
   "dependencies": {
